@@ -1,4 +1,4 @@
-import gradio as gr 
+import gradio as gr
 import os
 import shutil
 import subprocess
@@ -8,6 +8,7 @@ from datetime import datetime
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 
+# Audio processing functions
 def mp3_to_wav(mp3_file, wav_file):
     audio = AudioSegment.from_mp3(mp3_file)
     audio.export(wav_file, format="wav")
@@ -17,11 +18,9 @@ def remove_silence(file_path, output_path, minimum_silence=50):
     audio_format = "wav"
     sound = AudioSegment.from_file(file_path, format=audio_format)
     audio_chunks = split_on_silence(sound, min_silence_len=100, silence_thresh=-45, keep_silence=minimum_silence)
-    
     combined = AudioSegment.empty()
     for chunk in audio_chunks:
         combined += chunk
-
     combined.export(output_path, format=audio_format)
     return output_path
 
@@ -46,15 +45,11 @@ def process_file(upload_audio_path, silence=50):
     return output_path
 
 def store_path_in_json(path, json_file_path="stored_paths.json"):
-    entry = {
-        "path": path,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    
+    entry = {"path": path, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
     if not os.path.exists(json_file_path):
         with open(json_file_path, 'w') as json_file:
             json.dump([], json_file)
-
+    
     try:
         with open(json_file_path, 'r') as json_file:
             data = json.load(json_file)
@@ -72,42 +67,36 @@ def delete_old_files(json_filename, max_age_hours):
             data = json.load(json_file)
     else:
         return
-
     now = datetime.now()
     updated_data = []
     for entry in data:
         path = entry["path"]
         timestamp_str = entry["timestamp"]
         creation_date = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
-
         if (now - creation_date).total_seconds() / 3600 > max_age_hours:
             if os.path.exists(path):
                 os.remove(path)
             continue
-
         updated_data.append(entry)
-
     with open(json_filename, 'w') as json_file:
         json.dump(updated_data, json_file, indent=2)
 
 def calculate_duration(file_path):
     ffprobe_command = f"ffprobe -i {file_path} -show_entries format=duration -v quiet -of csv=p=0"
     duration_string = subprocess.check_output(ffprobe_command, shell=True, text=True)
-    duration = float(duration_string)
-    return duration
+    return float(duration_string)
 
 def process_audio(audio_file, seconds=0.05):
     keep_silence = int(seconds * 1000)
     output_audio_file = process_file(audio_file, silence=keep_silence)
     store_path_in_json(output_audio_file)
     delete_old_files("stored_paths.json", max_age_hours=24)
-    
     before = calculate_duration(audio_file)
     after = calculate_duration(output_audio_file)
     text = f"Duration before: {before:.2f} seconds, Duration after: {after:.2f} seconds"
     return output_audio_file, output_audio_file, text
 
-# Enhancements to the Gradio interface
+# Enhancements to Gradio Interface
 demo = gr.Interface(
     fn=process_audio, 
     inputs=[
@@ -121,10 +110,10 @@ demo = gr.Interface(
     ],
     examples=[['./audio/audio.wav', 0.05]],
     cache_examples=True,
-    theme="huggingface",  # You can choose a different theme here for a polished look
-    title="Audio Silence Removal",  # Title for the page
-    description="Upload an audio file, and the system will remove any silence above the specified threshold.",  # Description of what the app does
-    allow_flagging="never"  # Disables flagging of content
+    theme="compact",  # Use a built-in Gradio theme, you can replace "compact" with others like "huggingface" for different styles
+    title="Audio Silence Removal",  # Add title for your application
+    description="Upload an audio file, and the system will remove silence segments based on the threshold.",  # Add a description
+    allow_flagging="never",  # Disable flagging if you don't need it
 )
 
 demo.launch(debug=True)
