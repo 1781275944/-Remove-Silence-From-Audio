@@ -27,7 +27,7 @@ def remove_silence(file_path,output_path,minimum_silence=50):
     audio_format = "wav"
 
     # Reading and splitting the audio file into chunks
-    sound = AudioSegment.from_file(file_path, format=audio_format)
+    sound = AudioSegment.from_file(file_path)
     audio_chunks = split_on_silence(sound,
                                     min_silence_len=100,
                                     silence_thresh=-45,
