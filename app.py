@@ -155,9 +155,17 @@ def calculate_duration(file_path):
     duration = float(duration_string)
     return duration
 
-# Gradio UI setup
+# Gradio UI setup with Google verification and SEO tags
 with gr.Blocks(css=css) as demo:
+    # Add SEO and Google site verification meta tags
+    gr.HTML("""
+    <meta name="google-site-verification" content="7qZfYgGnHL0" />
+    <meta name="description" content="Gradio powered Audio Silence Removal Tool">
+    <meta name="keywords" content="audio, silence removal, audio processing, online tool">
+    """)
+
     gr.Markdown("# 🎧 Audio Silence Removal Tool\nUpload an audio file, adjust silence threshold, and download the cleaned audio!")
+    
     with gr.Row():
         with gr.Column():
             audio_in = gr.Audio(label="🎵 Upload Audio", type="filepath", sources=["upload", "microphone"])
