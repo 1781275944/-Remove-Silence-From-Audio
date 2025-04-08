@@ -1,4 +1,4 @@
-import gradio as gr
+import gradio as gr 
 import os
 import shutil
 import subprocess
@@ -7,43 +7,6 @@ import json
 from datetime import datetime
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
-
-# 自定义样式
-css = """
-body {
-    background-color: #2f2f2f;
-    color: #fff;
-    font-family: 'Arial', sans-serif;
-    text-align: center;
-}
-
-.gradio-container {
-    background-color: #333;
-    padding: 30px;
-    border-radius: 10px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
-}
-
-.gradio-button {
-    background-color: #ff6200;
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    border: none;
-    font-size: 18px;
-}
-
-.gradio-button:hover {
-    background-color: #ff8000;
-}
-
-.gradio-file {
-    margin-top: 20px;
-    background-color: #444;
-    border-radius: 5px;
-    padding: 20px;
-}
-"""
 
 def mp3_to_wav(mp3_file, wav_file):
     audio = AudioSegment.from_mp3(mp3_file)
@@ -54,9 +17,11 @@ def remove_silence(file_path, output_path, minimum_silence=50):
     audio_format = "wav"
     sound = AudioSegment.from_file(file_path, format=audio_format)
     audio_chunks = split_on_silence(sound, min_silence_len=100, silence_thresh=-45, keep_silence=minimum_silence)
+    
     combined = AudioSegment.empty()
     for chunk in audio_chunks:
         combined += chunk
+
     combined.export(output_path, format=audio_format)
     return output_path
 
@@ -75,6 +40,7 @@ def process_file(upload_audio_path, silence=50):
         shutil.copy(upload_audio_path, save_path)
     else:
         raise ValueError("Unsupported file format. Please upload an MP3 or WAV file.")
+    
     output_path = os.path.join(base_path, f"{file_name_without_extension}_{random_uuid}.wav")
     remove_silence(save_path, output_path, minimum_silence=silence)
     return output_path
@@ -84,45 +50,81 @@ def store_path_in_json(path, json_file_path="stored_paths.json"):
         "path": path,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
+    
     if not os.path.exists(json_file_path):
         with open(json_file_path, 'w') as json_file:
             json.dump([], json_file)
-    with open(json_file_path, 'r') as json_file:
-        try:
+
+    try:
+        with open(json_file_path, 'r') as json_file:
             data = json.load(json_file)
-        except json.decoder.JSONDecodeError:
-            data = []
+    except json.decoder.JSONDecodeError as e:
+        print(f"Error decoding JSON file: {e}")
+        raise
+
     data.append(entry)
     with open(json_file_path, 'w') as json_file:
         json.dump(data, json_file, indent=2)
 
-def process_audio(audio_file, seconds=0.05, password=""):
-    if password != "vip123":
-        return None, None, "❌ Invalid VIP password."
+def delete_old_files(json_filename, max_age_hours):
+    if os.path.exists(json_filename):
+        with open(json_filename, 'r') as json_file:
+            data = json.load(json_file)
+    else:
+        return
 
+    now = datetime.now()
+    updated_data = []
+    for entry in data:
+        path = entry["path"]
+        timestamp_str = entry["timestamp"]
+        creation_date = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+
+        if (now - creation_date).total_seconds() / 3600 > max_age_hours:
+            if os.path.exists(path):
+                os.remove(path)
+            continue
+
+        updated_data.append(entry)
+
+    with open(json_filename, 'w') as json_file:
+        json.dump(updated_data, json_file, indent=2)
+
+def calculate_duration(file_path):
+    ffprobe_command = f"ffprobe -i {file_path} -show_entries format=duration -v quiet -of csv=p=0"
+    duration_string = subprocess.check_output(ffprobe_command, shell=True, text=True)
+    duration = float(duration_string)
+    return duration
+
+def process_audio(audio_file, seconds=0.05):
     keep_silence = int(seconds * 1000)
     output_audio_file = process_file(audio_file, silence=keep_silence)
     store_path_in_json(output_audio_file)
     delete_old_files("stored_paths.json", max_age_hours=24)
+    
     before = calculate_duration(audio_file)
     after = calculate_duration(output_audio_file)
-    summary = f"✅ Duration before: {before:.2f} s, after: {after:.2f} s"
-    return output_audio_file, output_audio_file, summary
+    text = f"Duration before: {before:.2f} seconds, Duration after: {after:.2f} seconds"
+    return output_audio_file, output_audio_file, text
 
-with gr.Blocks(title="✨ Remove Silence From Audio", css=css) as demo:
-    gr.Markdown("# 🎧 Remove Silence From Audio\nUpload your audio and get it cleaned!")
-    with gr.Row():
-        with gr.Column():
-            audio_in = gr.Audio(label="🎵 Upload Audio", type="filepath", sources=["upload", "microphone"])
-            silence_input = gr.Number(label="🔕 Keep Silence (seconds)", value=0.05)
-            password_input = gr.Textbox(label="🔐 VIP Password", type="password", placeholder="Enter VIP Code")
-            submit_btn = gr.Button("🚀 Submit")
-        with gr.Column():
-            audio_out = gr.Audio(label="🎼 Cleaned Audio")
-            download_file = gr.File(label="📥 Download")
-            duration_box = gr.Textbox(label="📊 Result")
+# Enhancements to the Gradio interface
+demo = gr.Interface(
+    fn=process_audio, 
+    inputs=[
+        gr.Audio(label="Upload Audio", type="filepath", sources=['upload', 'microphone']),
+        gr.Slider(minimum=0.0, maximum=5.0, step=0.01, label="Keep Silence Upto (In seconds)", value=0.05)
+    ], 
+    outputs=[
+        gr.Audio(label="Play Audio"),
+        gr.File(label="Download Audio File"),
+        gr.Textbox(label="Duration")
+    ],
+    examples=[['./audio/audio.wav', 0.05]],
+    cache_examples=True,
+    theme="huggingface",  # You can choose a different theme here for a polished look
+    title="Audio Silence Removal",  # Title for the page
+    description="Upload an audio file, and the system will remove any silence above the specified threshold.",  # Description of what the app does
+    allow_flagging="never"  # Disables flagging of content
+)
 
-    submit_btn.click(fn=process_audio, inputs=[audio_in, silence_input, password_input], outputs=[audio_out, download_file, duration_box])
-    gr.Markdown("💡 Default VIP password: `vip123`")
-
-demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
+demo.launch(debug=True)
